@@ -1,11 +1,11 @@
-.PHONY: train train-ddp train-final profile benchmark clean help
+.PHONY: train train-ddp train-final profile benchmark test clean help
 
 help:
 	@echo "TrainFlow - Distributed ML Training Orchestrator"
 	@echo ""
 	@echo "  make train              Single GPU training"
-	@echo "  make train-ddp          Real multi-process DDP (Linux+NCCL)"
-	@echo "  make train-ddp-sim      Simulated DDP (single process)"
+	@echo "  make train-ddp          Multi-process DDP (NCCL)"
+	@echo "  make train-ddp-compress DDP with PowerSGD compression"
 	@echo "  make train-final        Full training with W&B"
 	@echo "  make train-no-wandb     Full training without W&B"
 	@echo "  make profile            Profiled training"
@@ -18,13 +18,10 @@ train:
 	python train.py --config configs/gpt2_wikitext.yaml
 
 train-ddp:
-	torchrun --nproc_per_node=2 train_ddp_multiproc.py --config configs/gpt2_wikitext.yaml
+	torchrun --nproc_per_node=2 train_ddp.py --config configs/gpt2_wikitext.yaml
 
-train-ddp-compression:
-	torchrun --nproc_per_node=2 train_ddp_multiproc.py --config configs/gpt2_wikitext.yaml --compression
-
-train-ddp-sim:
-	python train_ddp.py --config configs/gpt2_wikitext.yaml
+train-ddp-compress:
+	torchrun --nproc_per_node=2 train_ddp.py --config configs/gpt2_wikitext.yaml --compression
 
 train-final:
 	python train_final.py --config configs/gpt2_wikitext.yaml

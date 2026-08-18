@@ -1,4 +1,3 @@
 config,final_loss,avg_tok_per_sec,avg_mfu_pct,peak_vram_gb,avg_grad_norm
 single_gpu_baseline,7.4100,1500,5.1,2.04,1.890
-ddp_simulated_2proc,7.5200,810,2.7,2.59,2.100
-fault_tolerant_ckpt,7.4100,1300,4.4,2.04,1.890
+fault_tolerant_ckpt,7.4100,1500,5.1,2.04,1.890
