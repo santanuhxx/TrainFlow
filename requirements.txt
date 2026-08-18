@@ -1,4 +1,4 @@
-torch>=2.5.0
+torch>=2.13.0
 torchvision
 torchaudio
 transformers>=4.40.0
@@ -9,3 +9,4 @@ tensorboard
 tqdm
 rich
 pyyaml
+matplotlib

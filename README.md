@@ -217,8 +217,9 @@ Loading WikiText-103 (train)...
   39,916 chunks | 5,109,280 tokens total
 W&B initialized: https://wandb.ai/santanuhxx/distributed-ml-orchestrator/...
 Training | steps 0 → 5000 | effective batch = 16
-step     0 | loss 10.9633 | lr 0.00e+00 | norm 4.755 | tok/s 1,300 | MFU 4.4% | VRAM 2.04GB
-step    10 | loss 10.2221 | lr 1.50e-05 | norm 3.223 | tok/s 1,280 | MFU 4.3% | VRAM 2.04GB
+step     0 | loss 10.9408 | lr 0.00e+00 | norm 14.238 | tok/s 1,249 | MFU 4.2% | VRAM 2.04GB
+step    10 | loss 9.7710 | lr 1.50e-05 | norm 4.497 | tok/s 1,505 | MFU 5.1% | VRAM 2.04GB
+step    20 | loss 9.5154 | lr 3.00e-05 | norm 2.586 | tok/s 1,515 | MFU 5.1% | VRAM 2.04GB
 ```
 
 ---
