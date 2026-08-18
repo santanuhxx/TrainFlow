@@ -210,7 +210,7 @@ checkpoints/
 wandb/
 profiler_logs/
 logs/
-benchmarks/results.csv
+benchmarks/results_local.csv
 .vscode/
 test_checkpoints/
 

@@ -121,6 +121,10 @@ class FinalTrainer(BaseTrainer):
                     self.device,
                 )
                 if resume_step is not None:
+                    # Reset throughput counters so tok/s stats aren't
+                    # corrupted by the rolled-back steps.
+                    tokens_seen = 0
+                    t0 = time.time()
                     data_iter = iter(self.train_loader)
                     continue
 

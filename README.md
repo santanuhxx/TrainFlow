@@ -138,10 +138,9 @@ TrainFlow is a **production-grade distributed ML training orchestrator** built f
 
 | Configuration | Throughput | MFU | VRAM | Notes |
 |---|---|---|---|---|
-| Single GPU baseline | ~1,300 tok/s | 4.4% | 2.04 GB | Full training loop |
+| Single GPU baseline | ~1,500 tok/s | 5.1% | 2.04 GB | Full training loop |
 | DDP simulated (2 proc) | ~810 tok/s | 2.7% | 2.59 GB | Gloo communication overhead |
 | Fault-tolerant + async ckpt | ~1,300 tok/s | 4.4% | 2.04 GB | Zero training overhead |
-| Profiled run | ~1,075 tok/s | 3.6% | 2.04 GB | Profiler overhead included |
 | PowerSGD compression | OOM | — | >4GB | Requires >6GB VRAM |
 
 ![Benchmark Results](benchmarks/benchmark_results.png)
@@ -507,7 +506,6 @@ TrainFlow/
 ├── checkpoints/                    # Auto-generated, gitignored
 │
 ├── Makefile                        # Linux task runner (make train, make test, etc.)
-├── scripts.ps1                     # Windows PowerShell runner (legacy)
 ├── train.py                        # Fault-tolerant single GPU
 ├── train_ddp.py                    # DDP simulation
 ├── train_final.py                  # Full pipeline with W&B
