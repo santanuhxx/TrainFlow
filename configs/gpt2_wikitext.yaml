@@ -20,7 +20,7 @@ data:
   dataset: "wikitext"
   dataset_config: "wikitext-103-raw-v1"
   seq_length: 128
-  num_workers: 0
+  num_workers: 4  # Linux: parallel workers for DataLoader
 
 checkpoint:
   save_dir: "./checkpoints"

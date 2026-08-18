@@ -28,6 +28,8 @@ class WandBLogger:
     def log_system(self, step: int):
         if not self.enabled:
             return
+        if not torch.cuda.is_available():
+            return
         metrics = {
             "system/vram_allocated_gb": torch.cuda.memory_allocated() / 1e9,
             "system/vram_reserved_gb": torch.cuda.memory_reserved() / 1e9,

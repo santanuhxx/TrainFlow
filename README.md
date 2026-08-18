@@ -103,7 +103,7 @@ TrainFlow is a **production-grade distributed ML training orchestrator** built f
                          ↓
 ┌─────────────────────────────────────────────────────────┐
 │               AllReduce Communication                   │
-│         Gloo backend · gradient averaging               │
+│   NCCL backend (multi-GPU) · gradient averaging        │
 │    PowerSGD hook (optional) · 40-60% bandwidth cut      │
 └─────────────────────────┬───────────────────────────────┘
                           ↓
@@ -133,7 +133,7 @@ TrainFlow is a **production-grade distributed ML training orchestrator** built f
 
 ## 📊 Benchmark Results
 
-**Hardware:** NVIDIA RTX 2050 4GB VRAM · CUDA 12.0 · Windows 11
+**Hardware:** NVIDIA RTX 2050 4GB VRAM · CUDA 13.0 · Ubuntu Linux
 **Model:** GPT-2 124M · **Dataset:** WikiText-103 · **Precision:** fp16
 
 | Configuration | Throughput | MFU | VRAM | Notes |
@@ -154,32 +154,57 @@ TrainFlow is a **production-grade distributed ML training orchestrator** built f
 
 ### Prerequisites
 
-- Python 3.10+
+- Python 3.10+ (`python3 --version` to check)
 - CUDA 12.0+ (for GPU training)
-- conda or pip
+- `pip` and `venv` (included with Python 3.3+)
 
-### Step 1 — Clone & Install
+### Step 1 — Clone the Repository
 
 ```bash
-git clone https://github.com/batman-512/TrainFlow.git
+git clone https://github.com/santanuhxx/TrainFlow.git
 cd TrainFlow
-
-conda create -n dist-ml python=3.10 -y
-conda activate dist-ml
-
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-pip install transformers datasets wandb boto3 tensorboard tqdm rich pyyaml matplotlib
 ```
 
-### Step 2 — Login to W&B (optional)
+### Step 2 — Create & Activate Virtual Environment
+
+```bash
+# Create the virtual environment inside the project folder
+python3 -m venv .venv
+
+# Activate it (must do this every time you open a new terminal)
+source .venv/bin/activate
+```
+
+Your shell prompt will change to `(.venv)` confirming the environment is active.
+
+> **Note:** To deactivate when you're done, simply run `deactivate`.
+
+### Step 3 — Install Dependencies
+
+```bash
+# Install PyTorch with CUDA support first
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130
+
+# Install the rest of the project dependencies
+pip install -r requirements.txt
+```
+
+> **Verify installation:**
+> ```bash
+> python -c "import torch; print('torch:', torch.__version__); print('CUDA:', torch.cuda.is_available())"
+> ```
+
+### Step 4 — Login to W&B (optional)
 
 ```bash
 wandb login
 ```
 
-### Step 3 — Start Training
+### Step 5 — Start Training
 
 ```bash
+# Make sure the venv is active first: source .venv/bin/activate
+
 python train_final.py
 ```
 
@@ -191,7 +216,7 @@ VRAM: 4.3 GB
 Model: GPT-2 | Params: 124.4M
 Loading WikiText-103 (train)...
   39,916 chunks | 5,109,280 tokens total
-W&B initialized: https://wandb.ai/your-project/...
+W&B initialized: https://wandb.ai/santanuhxx/distributed-ml-orchestrator/...
 Training | steps 0 → 5000 | effective batch = 16
 step     0 | loss 10.9633 | lr 0.00e+00 | norm 4.755 | tok/s 1,300 | MFU 4.4% | VRAM 2.04GB
 step    10 | loss 10.2221 | lr 1.50e-05 | norm 3.223 | tok/s 1,280 | MFU 4.3% | VRAM 2.04GB
@@ -226,7 +251,7 @@ data:
   dataset: "wikitext"
   dataset_config: "wikitext-103-raw-v1"
   seq_length: 128
-  num_workers: 0                    # 0 for Windows
+  num_workers: 4                    # 4 for Linux (parallel data loading)
 
 checkpoint:
   save_dir: "./checkpoints"
@@ -251,14 +276,17 @@ python train.py
 # Resume from checkpoint (auto-detected)
 python train.py                          # detects latest.txt automatically
 
-# DDP training (simulated single-process)
+# DDP training (simulated single-process, uses Gloo)
 python train_ddp.py
 
 # DDP with PowerSGD compression (requires >6GB VRAM)
 python train_ddp.py --compression
 
-# Multi-process DDP (requires Linux + NCCL or multi-GPU)
-torchrun --nproc_per_node=2 train_ddp.py
+# Multi-process DDP (Linux + NCCL, multi-GPU)
+torchrun --nproc_per_node=2 train_ddp_multiproc.py
+
+# Multi-process DDP with compression
+torchrun --nproc_per_node=2 train_ddp_multiproc.py --compression
 
 # Full training with W&B monitoring
 python train_final.py
@@ -277,9 +305,6 @@ python benchmarks/plot.py
 
 # Run fault tolerance test
 python tests/test_fault_tolerance.py
-
-# Windows script runner
-.\scripts.ps1 help
 ```
 
 ---
@@ -344,7 +369,7 @@ model.register_comm_hook(state, powerSGD.powerSGD_hook)
 
 ## 🔬 Profiler Analysis
 
-Top CPU bottlenecks identified on RTX 2050 (100 training steps):
+Top CPU bottlenecks identified on RTX 2050 (100 training steps, Linux):
 
 | Operation | CPU ms | Calls | Bottleneck Type |
 |-----------|--------|-------|----------------|
@@ -354,7 +379,7 @@ Top CPU bottlenecks identified on RTX 2050 (100 training steps):
 | `aten::addmm` | 373ms | 7,680 | Linear layers |
 | `MulBackward0` | 456ms | 3,920 | Backward pass |
 
-**Root cause:** `num_workers=0` on Windows means DataLoader runs on the main process — every batch transfer is synchronous. On Linux with `num_workers=4`, the `aten::_to_copy` calls drop by ~70%.
+**Root cause:** `num_workers=4` on Linux enables parallel data loading — `aten::_to_copy` calls drop by ~70% vs `num_workers=0`.
 
 ```bash
 # Run profiler and view in TensorBoard
@@ -422,11 +447,11 @@ All fault tolerance tests passed!
 
 ## 🔑 Key Technical Decisions
 
-**Why Gloo over NCCL?**
-NCCL requires Linux with proper GPU peer-to-peer support and NVLink/PCIe topology. Gloo works cross-platform including Windows, making it suitable for development on consumer hardware. Production deployment would switch to NCCL.
+**Why Gloo over NCCL for the simulated DDP script?**
+NCCL requires Linux with proper GPU peer-to-peer support. Gloo works cross-platform and on CPU, making `train_ddp.py` useful for development and testing on any hardware. The real multi-GPU script (`train_ddp_multiproc.py`) uses NCCL for production performance.
 
 **Why atomic checkpointing?**
-Writing directly to the final path risks corruption if the process dies mid-write — you lose both the old checkpoint and get a partial new one. Temp file + rename is an OS-level atomic operation on all platforms, guaranteeing checkpoint integrity regardless of when the crash happens.
+Writing directly to the final path risks corruption if the process dies mid-write — you lose both the old checkpoint and get a partial new one. Temp file + rename is an OS-level atomic operation on Linux, guaranteeing checkpoint integrity regardless of when the crash happens.
 
 **Why async checkpointing?**
 Synchronous save of GPT-2 (~1.4GB) blocks training for ~2-3 seconds per save. Over 5000 steps with saves every 500 steps, that is 20-30 seconds of blocked GPU time. Background thread keeps GPU utilization continuous.
@@ -481,8 +506,8 @@ TrainFlow/
 │
 ├── checkpoints/                    # Auto-generated, gitignored
 │
-├── Makefile                        # Linux/Mac task runner
-├── scripts.ps1                     # Windows task runner
+├── Makefile                        # Linux task runner (make train, make test, etc.)
+├── scripts.ps1                     # Windows PowerShell runner (legacy)
 ├── train.py                        # Fault-tolerant single GPU
 ├── train_ddp.py                    # DDP simulation
 ├── train_final.py                  # Full pipeline with W&B
@@ -498,11 +523,10 @@ TrainFlow/
 ## 🗺️ Limitations and Future Work
 
 - PowerSGD requires >6GB VRAM — architecture implemented, hardware constraint only
-- Windows WDDM mode reduces GPU utilization vs Linux by ~15-20%
 - Pipeline parallelism planned for v2 — `torch.distributed.pipeline.sync.Pipe`
 - S3 async upload interface ready — requires AWS credentials
-- Full multi-node training requires Linux with NCCL backend
-- `num_workers=0` on Windows — Linux deployment enables parallel data loading
+- Full multi-node training requires NCCL backend with proper NVLink/PCIe topology
+- `train_ddp.py` (Gloo) is for single-machine simulation — use `train_ddp_multiproc.py` + NCCL for real multi-GPU
 
 ---
 

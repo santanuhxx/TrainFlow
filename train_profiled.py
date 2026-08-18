@@ -3,7 +3,7 @@ import argparse
 import time
 import csv
 from pathlib import Path
-from torch.cuda.amp import autocast
+from torch.amp import autocast
 from src.trainer.base_trainer import BaseTrainer, get_lr, estimate_mfu
 from src.monitoring.profiler import TrainingProfiler, MetricsTracker
 
@@ -65,7 +65,7 @@ def run_profiled_training(config_path: str, profile_steps: int = 100):
                     x, y = next(data_iter)
 
                 x, y = x.to(trainer.device), y.to(trainer.device)
-                with autocast():
+                with autocast(device_type="cuda"):
                     out = trainer.model(x, labels=y)
                     loss = out.loss / grad_accum
 
@@ -83,7 +83,7 @@ def run_profiled_training(config_path: str, profile_steps: int = 100):
             elapsed = time.time() - t0
             tok_per_sec = tokens_seen / elapsed
             mfu = estimate_mfu(trainer.model, tok_per_sec, trainer.device)
-            vram = torch.cuda.memory_allocated() / 1e9
+            vram = torch.cuda.memory_allocated() / 1e9 if torch.cuda.is_available() else 0.0
 
             metrics.update(step_loss, tok_per_sec, mfu, vram, grad_norm.item())
 

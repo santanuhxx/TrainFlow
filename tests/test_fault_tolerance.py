@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.trainer.base_trainer import BaseTrainer, get_lr, estimate_mfu
 from src.checkpoint.checkpoint_manager import CheckpointManager
 from src.trainer.config_validator import validate_config
-from torch.cuda.amp import autocast
+from torch.amp import autocast
 
 
 def run_training_segment(
@@ -59,7 +59,7 @@ def run_training_segment(
                 x, y = next(data_iter)
 
             x, y = x.to(trainer.device), y.to(trainer.device)
-            with autocast():
+            with autocast(device_type="cuda", enabled=torch.cuda.is_available()):
                 out = trainer.model(x, labels=y)
                 loss = out.loss / grad_accum
 

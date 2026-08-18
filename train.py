@@ -63,7 +63,7 @@ class FaultTolerantTrainer(BaseTrainer):
         t0 = time.time()
         tokens_seen = start_step * cfg["batch_size"] * grad_accum * self.config["data"]["seq_length"]
 
-        from torch.cuda.amp import autocast
+        from torch.amp import autocast
         import torch
 
         for step in range(start_step, cfg["max_steps"]):
@@ -89,7 +89,7 @@ class FaultTolerantTrainer(BaseTrainer):
                     x, y = next(data_iter)
 
                 x, y = x.to(self.device), y.to(self.device)
-                with autocast():
+                with autocast(device_type="cuda", enabled=self.device.type == "cuda"):
                     out = self.model(x, labels=y)
                     loss = out.loss / grad_accum
 

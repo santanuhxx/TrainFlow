@@ -2,13 +2,14 @@ import os
 import time
 import math
 import yaml
+import contextlib
 import torch
 import torch.nn as nn
 import torch.distributed as dist
 from pathlib import Path
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler
-from torch.cuda.amp import GradScaler, autocast
+from torch.amp import GradScaler, autocast
 from transformers import GPT2LMHeadModel, GPT2Config, AutoTokenizer
 
 from src.trainer.base_trainer import (
@@ -20,19 +21,14 @@ def setup_distributed():
     rank = int(os.environ["RANK"])
     world_size = int(os.environ["WORLD_SIZE"])
     local_rank = int(os.environ["LOCAL_RANK"])
-    import tempfile
-    store_path = os.path.join(tempfile.gettempdir(), "dist_ml_store")
-    store = dist.FileStore(store_path, world_size)
 
     dist.init_process_group(
-        backend="gloo",
-        store=store,
-        rank=rank,
-        world_size=world_size,
+        backend="nccl",
+        init_method="env://",
     )
 
-    torch.cuda.set_device(0)
-    device = torch.device("cuda:0")
+    torch.cuda.set_device(local_rank)
+    device = torch.device(f"cuda:{local_rank}")
     return rank, world_size, local_rank, device
 
 
@@ -53,7 +49,7 @@ class DDPTrainer:
         self._setup_model()
         self._setup_data()
         self._setup_optimizer()
-        self.scaler = GradScaler()
+        self.scaler = GradScaler(device="cuda")
         self.step = 0
 
     def _setup_model(self):
@@ -67,12 +63,11 @@ class DDPTrainer:
         )
         model = GPT2LMHeadModel(gpt_config).to(self.device)
         self.model = DDP(
-    model,
-    device_ids=None,
-    output_device=None,
-    find_unused_parameters=False,
-    bucket_cap_mb=10,
-)
+            model,
+            device_ids=[self.local_rank],
+            find_unused_parameters=False,
+            bucket_cap_mb=25,
+        )
 
         if self.is_master:
             num_params = sum(p.numel() for p in self.model.parameters()) / 1e6
@@ -146,7 +141,7 @@ class DDPTrainer:
         total_loss, count = 0.0, 0
         for x, y in self.val_loader:
             x, y = x.to(self.device), y.to(self.device)
-            with autocast():
+            with autocast(device_type="cuda"):
                 out = self.model(x, labels=y)
             total_loss += out.loss.item()
             count += 1
@@ -211,13 +206,13 @@ class DDPTrainer:
 
                 x, y = x.to(self.device), y.to(self.device)
                 is_last_micro = (micro_step == grad_accum - 1)
-                ctx = self.model.no_sync() if not is_last_micro else torch.inference_mode.__class__
+                sync_ctx = self.model.no_sync() if not is_last_micro else contextlib.nullcontext()
 
-                with autocast():
-                    out = self.model(x, labels=y)
-                    loss = out.loss / grad_accum
-
-                self.scaler.scale(loss).backward()
+                with sync_ctx:
+                    with autocast(device_type="cuda"):
+                        out = self.model(x, labels=y)
+                        loss = out.loss / grad_accum
+                    self.scaler.scale(loss).backward()
                 step_loss += loss.item()
 
             self.scaler.unscale_(self.optimizer)
